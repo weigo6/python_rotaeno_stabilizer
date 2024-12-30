@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QTextEdit, QFileDialog, QLabel
 )
 from PySide6.QtCore import QThread, Signal
-from rotaeno_stabilizer import RotaenoStabilizer
+from python_rotaeno_stabilizer import RotaenoStabilizer
 
 class VideoProcessingThread(QThread):
     update_info = Signal(str)  # 定义信号以更新信息框
