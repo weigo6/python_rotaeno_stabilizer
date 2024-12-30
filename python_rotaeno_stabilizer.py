@@ -1,27 +1,23 @@
 import math
 import multiprocessing as mp
 import os
-import queue
 import subprocess
 import time
 from functools import wraps
 
 import cv2
 import numpy as np
-from tqdm import tqdm
 
 
 def timer(fn):
     """计算性能的修饰器"""
-
     @wraps(fn)
     def measure_time(*args, **kwargs):
         t1 = time.time()
         result = fn(*args, **kwargs)
         t2 = time.time()
-        print(f"@timer: {fn.__name__} took {t2 - t1: .5f} s")
+        print(f"@timer: {fn.__name__} took {t2 - t1:.5f} s")
         return result
-
     return measure_time
 
 
@@ -35,59 +31,69 @@ class RotaenoStabilizer:
         '.flv': 'FLV1'
     }
 
-    def __init__(self, video, type="v2", square=True):
+    def __init__(self, video, output_folder=None, type="v2", square=True):
         self.video_file = video
         self.type = type
         self.square = square
-        self.video_dir = video if os.path.isabs(video) else os.path.join(os.getcwd(), 'videos', video)  # 判断是否为绝对路径
+        self.video_dir = video if os.path.isabs(video) else os.path.join(os.getcwd(), 'videos', video)
         self.video_file_name = os.path.basename(video)  # 获取不带路径的文件名
         self.video_name = os.path.splitext(self.video_file_name)[0]  # 获取文件名
         self.video_extension = os.path.splitext(self.video_file_name)[1]  # 获取文件后缀
-        self.output_path = os.path.join(os.getcwd(), 'output',
-                                        f'{self.video_name}_stb{self.video_extension}')  # 指定输出路径
-        self.cfr_output_path = os.path.join(os.getcwd(), 'output',
-                                            f'{self.video_name}_cfr{self.video_extension}')  # 指定输出路径
-        self.refined_video_path = os.path.join(os.getcwd(), 'output',
-                                               f'{self.video_name}_refined{self.video_extension}')
+
+        # 确保输出文件夹存在
+        if output_folder:
+            self.output_path = os.path.join(output_folder, f'{self.video_name}_stb{self.video_extension}')
+            self.cfr_output_path = os.path.join(output_folder, f'{self.video_name}_cfr{self.video_extension}')
+            self.refined_video_path = os.path.join(output_folder, f'{self.video_name}_refined{self.video_extension}')
+        else:
+            output_folder = os.path.join(os.getcwd(), 'output')
+            if not os.path.exists(output_folder):
+                os.makedirs(output_folder)
+            self.output_path = os.path.join(output_folder, f'{self.video_name}_stb{self.video_extension}')
+            self.cfr_output_path = os.path.join(output_folder, f'{self.video_name}_cfr{self.video_extension}')
+            self.refined_video_path = os.path.join(output_folder, f'{self.video_name}_refined{self.video_extension}')
+
+        # 如果输出目录不存在，创建它
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder)
+
         cap = cv2.VideoCapture(self.video_dir)
+        if not cap.isOpened():
+            raise ValueError(f"无法打开视频文件: {self.video_dir}")  # 错误处理
         self.fps = cap.get(cv2.CAP_PROP_FPS)
 
         if self.video_extension.lower() in self.format_to_fourcc:
             self.fourcc = cv2.VideoWriter_fourcc(*self.format_to_fourcc[self.video_extension.lower()])
         else:
             raise ValueError(f"Unsupported video format: {self.video_extension}")
-        # self.fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         cap.release()
 
         self.num_cores = os.cpu_count() if os.cpu_count() < 61 else 61
 
     @timer
     def add_audio_to_video(self, input_video=None, audio=None, verbose=False):
-        """
-        将音频添加到视频中。
-
+        """将音频添加到视频中。
         :param input_video: 输入的视频文件路径。如果为 None，则使用实例的 output_path 属性。
         :param audio: 输入的音频来源文件路径。如果为 None，则使用实例的 video_dir 属性。
         :param verbose: 是否显示详细的 ffmpeg 输出，默认为 False。
-        :return: None
+        :return: None        
         """
         if input_video is None:
             input_video = self.output_path
         if audio is None:
             audio = self.video_dir
-        output_file = f'output/{self.video_name}_with_audio{self.video_extension.lower()}'
+        output_file = os.path.join(os.path.dirname(self.output_path), f'{self.video_name}_with_audio{self.video_extension.lower()}')
         command = [
             'ffmpeg',
-            '-i', input_video,  # 输入的视频文件
-            '-i', audio,  # 输入的音频来源文件
-            '-c:v', 'copy',  # 复制视频流
-            '-c:a', 'aac',  # 使用 AAC 编码音频
+            '-i', input_video,
+            '-i', audio,
+            '-c:v', 'copy',
+            '-c:a', 'aac',
             '-strict', 'experimental',
-            output_file  # 输出的文件名
+            output_file
         ]
 
         if not verbose:
-            # 抑制 stdout 和 stderr 输出
             with open(os.devnull, 'wb') as devnull:
                 subprocess.run(command, stdout=devnull, stderr=devnull)
         else:
@@ -95,9 +101,7 @@ class RotaenoStabilizer:
 
     @timer
     def convert_vfr_to_cfr(self, verbose=False):
-        """
-        将可变帧率 (VFR) 视频转换为固定帧率 (CFR) 视频。
-
+        """将可变帧率 (VFR) 视频转换为固定帧率 (CFR) 视频。        
         :param verbose: 是否显示详细的 ffmpeg 输出，默认为 False。
         :return: None
         """
@@ -110,7 +114,6 @@ class RotaenoStabilizer:
         ]
 
         if not verbose:
-            # 抑制 stdout 和 stderr 输出
             with open(os.devnull, 'wb') as devnull:
                 subprocess.run(cmd, stdout=devnull, stderr=devnull)
         else:
@@ -132,7 +135,7 @@ class RotaenoStabilizer:
 
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         return float(result.stdout)
-
+    
     def compute_rotation(self, left_color, right_color, center_color, sample_color):
         """
         根据画面四个角的颜色来计算画面旋转角度
@@ -157,7 +160,7 @@ class RotaenoStabilizer:
 
         # 注意，如果旋转方向是相反的，只需返回-angle即可
         return -angle
-
+    
     def compute_rotation_v2(self, top_left_color, top_right_color, bottom_left_color, bottom_right_color):
         '''
         根据画面四个角的颜色来计算画面旋转角度
@@ -187,7 +190,7 @@ class RotaenoStabilizer:
         rotation_degree = color_to_degree / 4096 * -360
 
         return -rotation_degree
-
+    
     @timer
     def improve_video_quality(self, target_bitrate='50M', verbose=False):
         """
@@ -280,16 +283,16 @@ class RotaenoStabilizer:
             rotated_frame = cv2.warpAffine(frame, M, (width, height))
 
         return rotated_frame
-
+    
     def process_video(self, group_number, frame_jump_unit):
         cap = cv2.VideoCapture(self.cfr_output_path)
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_jump_unit * group_number)
         proc_frames = 0
-        inter_output_path = os.path.join(os.getcwd(), 'output',
+        inter_output_path = os.path.join(os.path.dirname(self.output_path),
                                          "{}.{}".format(group_number, f'{self.video_extension.lower()[1:]}'))
 
         frame_size = math.ceil(math.sqrt(int(cap.get(3)) ** 2 + int(cap.get(4)) ** 2))
-        if self.square:  # 方形
+        if self.square:
             out = cv2.VideoWriter(inter_output_path, self.fourcc, self.fps, (frame_size, frame_size))
         else:
             out = cv2.VideoWriter(inter_output_path, self.fourcc, self.fps, (int(cap.get(3)), int(cap.get(4))))
@@ -305,21 +308,19 @@ class RotaenoStabilizer:
         cap.release()
         out.release()
         return None
-
+    
     def concatenate_videos(self, verbose=False):
         # 构建 FFmpeg 命令
         cmd = [
             'ffmpeg',
             '-f', 'concat',
-            '-safe', '0',  # 如果文件名包含特殊字符，需要此选项
-            '-i', 'output/intermediate_files.txt',
-            '-c', 'copy',  # 使用 'copy' 来避免重新编码
+            '-safe', '0',
+            '-i', os.path.join(os.path.dirname(self.output_path), "intermediate_files.txt"),
+            '-c', 'copy',
             self.output_path
         ]
 
-        # 执行命令
         if not verbose:
-            # 抑制 stdout 和 stderr 输出
             with open(os.devnull, 'wb') as devnull:
                 subprocess.run(cmd, stdout=devnull, stderr=devnull)
         else:
@@ -327,50 +328,45 @@ class RotaenoStabilizer:
 
     @timer
     def render(self):
-        """
-        :return: 无返回值：
-        在output文件夹中输出渲染完毕的视频
-        """
+        """渲染视频并输出到指定路径。"""
         cap2 = cv2.VideoCapture(self.cfr_output_path)
-        frame_jump_unit = cap2.get(cv2.CAP_PROP_FRAME_COUNT) // self.num_cores  # 每个进程处理的帧数
+        frame_jump_unit = int(cap2.get(cv2.CAP_PROP_FRAME_COUNT)) // self.num_cores
         cap2.release()
 
         p = mp.Pool(self.num_cores)
         video_list = range(self.num_cores)
         video_list = [(item, frame_jump_unit) for item in video_list]
-        p.starmap(self.process_video, video_list)  # 多进程开始
+        p.starmap(self.process_video, video_list)
 
         intermediate_files = ["{}.{}".format(i, f'{self.video_extension.lower()[1:]}') for i in range(self.num_cores)]
-        # print(intermediate_files)
 
-        with open("output/intermediate_files.txt", "w") as f:
+        with open(os.path.join(os.path.dirname(self.output_path), "intermediate_files.txt"), "w") as f:
             for t in intermediate_files:
                 f.write("file {} \n".format(t))
 
         self.concatenate_videos()
 
-        # 删除中间文件
         for f in intermediate_files:
-            os.remove(os.path.join(os.getcwd(), 'output', f))
-        os.remove("output/intermediate_files.txt")
+            os.remove(os.path.join(os.path.dirname(self.output_path), f))
+        os.remove(os.path.join(os.path.dirname(self.output_path), "intermediate_files.txt"))
 
-    def run(self):  # 渲染方形视频
-        """
-        :return: 无返回值，在output文件夹输出渲染完毕的视频
-        """
+    def run(self):  # 渲染视频
+        """执行视频稳定处理。"""
+        try:
+            cap = cv2.VideoCapture(self.video_dir)
+            print("正在将视频转换为CFR视频……")
+            self.convert_vfr_to_cfr()
+            cap.release()
 
-        cap = cv2.VideoCapture(self.video_dir)
+            print("开始渲染视频...")
+            self.render()
+            self.add_audio_to_video()
+        except Exception as e:
+            print(f"处理视频时发生错误: {str(e)}")
+        finally:
+            if os.path.exists(self.cfr_output_path):
+                os.remove(self.cfr_output_path)
+            if os.path.exists(self.output_path):
+                os.remove(self.output_path)
 
-        print("正在将视频转换为CFR视频……")
-        self.convert_vfr_to_cfr()
-        cap.release()
-
-        # 接下来只处理CFR视频
-        self.render()
-        # self.improve_video_quality()
-        self.add_audio_to_video()
-
-        os.remove(self.cfr_output_path)
-        os.remove(self.output_path)
-
-        print(f"{self.video_file_name}稳定完成")
+        print(f"{self.video_file_name} 稳定完成")
