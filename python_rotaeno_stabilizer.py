@@ -31,10 +31,11 @@ class RotaenoStabilizer:
         '.flv': 'FLV1'
     }
 
-    def __init__(self, video, output_folder=None, type="v2", square=True):
+    def __init__(self, video, output_folder=None, type="v2", square=True, ffmpeg_path='ffmpeg'):
         self.video_file = video
         self.type = type
         self.square = square
+        self.ffmpeg_path = ffmpeg_path  # 新增属性，用于保存 ffmpeg 路径
         self.video_dir = video if os.path.isabs(video) else os.path.join(os.getcwd(), 'videos', video)
         self.video_file_name = os.path.basename(video)  # 获取不带路径的文件名
         self.video_name = os.path.splitext(self.video_file_name)[0]  # 获取文件名
@@ -82,9 +83,16 @@ class RotaenoStabilizer:
             input_video = self.output_path
         if audio is None:
             audio = self.video_dir
+    
+        # 定义输出文件路径
         output_file = os.path.join(os.path.dirname(self.output_path), f'{self.video_name}_with_audio{self.video_extension.lower()}')
+
+        # 如果输出文件已存在，先删除它
+        if os.path.exists(output_file):
+            os.remove(output_file)
+
         command = [
-            'ffmpeg',
+            self.ffmpeg_path,  # 使用实例的 ffmpeg_path
             '-i', input_video,
             '-i', audio,
             '-c:v', 'copy',
@@ -105,8 +113,12 @@ class RotaenoStabilizer:
         :param verbose: 是否显示详细的 ffmpeg 输出，默认为 False。
         :return: None
         """
+        # 如果输出文件已存在，先删除它
+        if os.path.exists(self.cfr_output_path):
+            os.remove(self.cfr_output_path)
+        
         cmd = [
-            'ffmpeg',
+            self.ffmpeg_path,  # 使用实例的 ffmpeg_path
             '-i', self.video_dir,
             '-vf', f'fps={self.fps}',
             '-c:a', 'copy',  # 复制音频流而不重新编码
@@ -126,7 +138,7 @@ class RotaenoStabilizer:
         :return: 时长
         """
         cmd = [
-            'ffprobe',
+            self.ffmpeg_path,  # 使用实例的 ffmpeg_path
             '-v', 'error',
             '-show_entries', 'format=duration',
             '-of', 'default=noprint_wrappers=1:nokey=1',
@@ -202,7 +214,7 @@ class RotaenoStabilizer:
         """
         # 构建FFmpeg命令
         command = [
-            'ffmpeg',
+            self.ffmpeg_path,  # 使用实例的 ffmpeg_path
             '-i', self.output_path,  # 输入视频文件
             '-b:v', target_bitrate,  # 设置视频码率
             '-c:v', 'libx264',  # 设置视频编码器为libx264
@@ -312,7 +324,7 @@ class RotaenoStabilizer:
     def concatenate_videos(self, verbose=False):
         # 构建 FFmpeg 命令
         cmd = [
-            'ffmpeg',
+            self.ffmpeg_path,  # 使用实例的 ffmpeg_path
             '-f', 'concat',
             '-safe', '0',
             '-i', os.path.join(os.path.dirname(self.output_path), "intermediate_files.txt"),
@@ -329,6 +341,10 @@ class RotaenoStabilizer:
     @timer
     def render(self):
         """渲染视频并输出到指定路径。"""
+        # 如果输出文件已存在，先删除它
+        if os.path.exists(self.output_path):
+            os.remove(self.output_path)
+
         cap2 = cv2.VideoCapture(self.cfr_output_path)
         frame_jump_unit = int(cap2.get(cv2.CAP_PROP_FRAME_COUNT)) // self.num_cores
         cap2.release()
