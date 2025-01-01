@@ -31,10 +31,12 @@ class RotaenoStabilizer:
         '.flv': 'FLV1'
     }
 
-    def __init__(self, video, output_folder=None, type="v2", square=True, ffmpeg_path='ffmpeg'):
+    def __init__(self, video, output_folder=None, type="v2", square=True, circle=False, ffmpeg_path='ffmpeg', hi_quality=False):
         self.video_file = video
         self.type = type
         self.square = square
+        self.circle = circle
+        self.hi_quality = hi_quality
         self.ffmpeg_path = ffmpeg_path  # 新增属性，用于保存 ffmpeg 路径
         self.video_dir = video if os.path.isabs(video) else os.path.join(os.getcwd(), 'videos', video)
         self.video_file_name = os.path.basename(video)  # 获取不带路径的文件名
@@ -212,6 +214,9 @@ class RotaenoStabilizer:
         - target_bitrate: 目标视频码率，例如 '50M' 代表50 Mbps。
         - verbose: 是否显示详细的 ffmpeg 输出，默认为 False。
         """
+        if os.path.exists(self.refined_video_path):
+            os.remove(self.refined_video_path)
+
         # 构建FFmpeg命令
         command = [
             self.ffmpeg_path,  # 使用实例的 ffmpeg_path
@@ -285,6 +290,17 @@ class RotaenoStabilizer:
             # 创建掩码以识别非黑色像素
             _, mask = cv2.threshold(cv2.cvtColor(rotated_frame, cv2.COLOR_BGR2GRAY), 1, 255, cv2.THRESH_BINARY)
 
+            # 如果需要裁剪为圆形输出
+            if self.circle:
+                # 定义圆形区域
+                mask_circle = np.zeros((max_size, max_size), dtype='uint8')
+                cv2.circle(mask_circle, circle_center, int(circle_radius * 1.2), 255, -1)  # 半径为原来的1.2倍
+                rotated_frame_masked = cv2.bitwise_and(rotated_frame, rotated_frame, mask=mask_circle)
+                # 在圆形掩码的边界上绘制圆环
+                background_frame_masked = cv2.bitwise_and(background_frame, background_frame, mask=mask_circle)
+                combined_frame = cv2.add(background_frame_masked, rotated_frame_masked)
+                return combined_frame
+            
             # 使用掩码叠加非黑色像素到背景帧
             background_frame_masked = cv2.bitwise_and(background_frame, background_frame, mask=cv2.bitwise_not(mask))
             rotated_frame_masked = cv2.bitwise_and(rotated_frame, rotated_frame, mask=mask)
@@ -376,7 +392,11 @@ class RotaenoStabilizer:
 
             print("开始渲染视频...")
             self.render()
-            self.add_audio_to_video()
+            if self.hi_quality:
+                self.improve_video_quality()
+                self.add_audio_to_video(input_video=self.refined_video_path)
+            else:
+                self.add_audio_to_video(input_video=self.output_path)
         except Exception as e:
             print(f"处理视频时发生错误: {str(e)}")
         finally:
@@ -384,5 +404,7 @@ class RotaenoStabilizer:
                 os.remove(self.cfr_output_path)
             if os.path.exists(self.output_path):
                 os.remove(self.output_path)
+            if os.path.exists(self.refined_video_path):
+                os.remove(self.refined_video_path)
 
         print(f"{self.video_file_name} 稳定完成")
