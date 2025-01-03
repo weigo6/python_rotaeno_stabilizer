@@ -8,6 +8,9 @@ from functools import wraps
 import cv2
 import numpy as np
 
+# 创建 STARTUPINFO 对象
+startupinfo = subprocess.STARTUPINFO()
+startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
 
 def timer(fn):
     """计算性能的修饰器"""
@@ -104,8 +107,7 @@ class RotaenoStabilizer:
         ]
 
         if not verbose:
-            with open(os.devnull, 'wb') as devnull:
-                subprocess.run(command, stdout=devnull, stderr=devnull)
+            subprocess.run(command, startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         else:
             subprocess.run(command)
 
@@ -128,8 +130,7 @@ class RotaenoStabilizer:
         ]
 
         if not verbose:
-            with open(os.devnull, 'wb') as devnull:
-                subprocess.run(cmd, stdout=devnull, stderr=devnull)
+            subprocess.run(cmd,startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         else:
             subprocess.run(cmd)
 
@@ -147,7 +148,7 @@ class RotaenoStabilizer:
             video_path
         ]
 
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        result = subprocess.run(cmd,startupinfo=startupinfo, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         return float(result.stdout)
     
     def compute_rotation(self, left_color, right_color, center_color, sample_color):
@@ -232,8 +233,7 @@ class RotaenoStabilizer:
             subprocess.run(command, check=True)
         else:
             # 抑制 stdout 和 stderr 输出
-            with open(os.devnull, 'wb') as devnull:
-                subprocess.run(command, stdout=devnull, stderr=devnull, check=True)
+            subprocess.run(command,startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
         if verbose:
             print(f"视频质量改善完成，输出文件已保存至: {self.refined_video_path}")
@@ -349,8 +349,7 @@ class RotaenoStabilizer:
         ]
 
         if not verbose:
-            with open(os.devnull, 'wb') as devnull:
-                subprocess.run(cmd, stdout=devnull, stderr=devnull)
+            subprocess.run(cmd,startupinfo=startupinfo, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         else:
             subprocess.run(cmd)
 
@@ -385,10 +384,8 @@ class RotaenoStabilizer:
     def run(self):  # 渲染视频
         """执行视频稳定处理。"""
         try:
-            cap = cv2.VideoCapture(self.video_dir)
             print("正在将视频转换为CFR视频……")
             self.convert_vfr_to_cfr()
-            cap.release()
 
             print("开始渲染视频...")
             self.render()
