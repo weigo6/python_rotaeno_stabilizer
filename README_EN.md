@@ -114,7 +114,7 @@ Note: If you don't choose the default input/output folder, the default folder wi
 
 When the video rendering is complete, the Happy End! text will be returned in the program's runtime prompt output box.
 
-<img src="images/gui.png" alt="gui" style="zoom:80%;" />
+<img src="images/gui.png" alt="gui" style="zoom:50%;" />
 
 Result as follows:
 
