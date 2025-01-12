@@ -34,12 +34,14 @@ class RotaenoStabilizer:
         '.flv': 'FLV1'
     }
 
-    def __init__(self, video, output_folder=None, type="v2", square=True, circle=False, ffmpeg_path='ffmpeg', hi_quality=False):
+    def __init__(self, video, output_folder=None, type="v2", square=True, circle=False, ffmpeg_path='ffmpeg', hi_quality=False, O_value= 5, S_value= 3):
         self.video_file = video
         self.type = type
         self.square = square
         self.circle = circle
         self.hi_quality = hi_quality
+        self.O_value = O_value
+        self.S_value = S_value
         self.ffmpeg_path = ffmpeg_path  # 新增属性，用于保存 ffmpeg 路径
         self.video_dir = video if os.path.isabs(video) else os.path.join(os.getcwd(), 'videos', video)
         self.video_file_name = os.path.basename(video)  # 获取不带路径的文件名
@@ -242,8 +244,8 @@ class RotaenoStabilizer:
         height, width, channels = frame.shape
 
         # Sample colors
-        O = 5
-        S = 3
+        O = self.O_value
+        S = self.S_value
         bottom_left = frame[height - O:height - O + S, O:O + S].mean(axis=(0, 1))
         top_left = frame[O:O + S, O:O + S].mean(axis=(0, 1))
         bottom_right = frame[height - O:height - O + S, width - O:width - O + S].mean(axis=(0, 1))
