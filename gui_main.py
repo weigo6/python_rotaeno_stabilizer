@@ -4,7 +4,7 @@ import glob
 import time
 from PySide6.QtWidgets import (
     QApplication, QWidget, QPushButton, QVBoxLayout,
-    QHBoxLayout, QTextEdit, QFileDialog, QLabel, QMessageBox, QGroupBox, QCheckBox, QLineEdit
+    QHBoxLayout, QTextEdit, QFileDialog, QLabel, QMessageBox, QGroupBox, QCheckBox, QLineEdit, QSpinBox
 )
 from PySide6.QtGui import QIcon
 from PySide6.QtCore import QThread, Signal
@@ -24,7 +24,7 @@ class VideoProcessingThread(QThread):
     update_info = Signal(str)  # 定义信号以更新信息框
     processing_done = Signal()  # 定义信号以表示处理完成
 
-    def __init__(self, input_folder, output_folder, ffmpeg_path, square, type, circle, hi_quality):
+    def __init__(self, input_folder, output_folder, ffmpeg_path, square, type, circle, hi_quality, O_value, S_value):
         super().__init__()
         self.input_folder = input_folder
         self.output_folder = output_folder
@@ -33,6 +33,8 @@ class VideoProcessingThread(QThread):
         self.type = type
         self.circle = circle
         self.hi_quality = hi_quality
+        self.O_value = O_value
+        self.S_value = S_value
         self.videos = []
 
     def find_all_videos(self):
@@ -53,9 +55,9 @@ class VideoProcessingThread(QThread):
             self.update_info.emit(f"处理视频: {video}")
             try:
                 if video[0:2] == "v1":
-                    stab_task = RotaenoStabilizer(video, self.output_folder, ffmpeg_path=self.ffmpeg_path, square=self.square, type="v1", circle=self.circle, hi_quality=self.hi_quality)
+                    stab_task = RotaenoStabilizer(video, self.output_folder, ffmpeg_path=self.ffmpeg_path, square=self.square, type="v1", circle=self.circle, hi_quality=self.hi_quality,O_value=self.O_value, S_value=self.S_value)
                 else:
-                    stab_task = RotaenoStabilizer(video, self.output_folder, ffmpeg_path=self.ffmpeg_path, square=self.square, type=self.type, circle=self.circle, hi_quality=self.hi_quality)
+                    stab_task = RotaenoStabilizer(video, self.output_folder, ffmpeg_path=self.ffmpeg_path, square=self.square, type=self.type, circle=self.circle, hi_quality=self.hi_quality,O_value=self.O_value, S_value=self.S_value)
                 stab_task.run()  # 处理视频
             except Exception as e:
                 self.update_info.emit(f"处理视频时发生错误: {str(e)}")
@@ -147,23 +149,59 @@ class VideoProcessorApp(QWidget):
 
         # 复选框组布局
         checkbox_layout = QVBoxLayout()
-        checkbox_layout.setSpacing(5)  # 设置复选框之间的间距
+        checkbox_layout.setSpacing(10)  # 设置复选框之间的间距
+
+        # 创建方形渲染和圆形蒙版的横向布局
+        shape_layout = QHBoxLayout()
         self.square_checkbox = QCheckBox("方形渲染square")
         self.square_checkbox.setChecked(True)
-        checkbox_layout.addWidget(self.square_checkbox)
+        shape_layout.addWidget(self.square_checkbox)
 
         self.circle_checkbox = QCheckBox("圆形蒙版circle")
         self.circle_checkbox.setChecked(False)
-        checkbox_layout.addWidget(self.circle_checkbox)
+        shape_layout.addWidget(self.circle_checkbox)
 
+        # 将横向布局添加到复选框布局
+        checkbox_layout.addLayout(shape_layout)
+
+        # 创建高码率输出和使用类型‘v2’的横向布局
+        type_layout = QHBoxLayout()
         self.hi_q_checkbox = QCheckBox("高码率输出hi_q")
         self.hi_q_checkbox.setChecked(False)
-        checkbox_layout.addWidget(self.hi_q_checkbox)
+        type_layout.addWidget(self.hi_q_checkbox)
 
         self.type_checkbox = QCheckBox("使用类型 v2（type='v2'）")
         self.type_checkbox.setChecked(True)
-        checkbox_layout.addWidget(self.type_checkbox)
+        type_layout.addWidget(self.type_checkbox)
 
+        # 将横向布局添加到复选框布局
+        checkbox_layout.addLayout(type_layout)
+
+        # 创建偏移值输入框
+        spin_layout = QHBoxLayout()
+        self.O_spin_box = QSpinBox()
+        self.O_spin_box.setPrefix("采集颜色块偏移值: ")  # 设置前缀
+        self.O_spin_box.setRange(0, 5)  # 设置范围为0到5
+        self.O_spin_box.setValue(3)       # 设置默认值
+        self.O_spin_box.setSingleStep(1)   # 设置每次增加或减少的步进值
+        spin_layout.addWidget(self.O_spin_box)
+
+        # 创建区域大小输入框
+        self.S_spin_box = QSpinBox()
+        self.S_spin_box.setPrefix("采集颜色块区域大小: ")  # 设置前缀
+        self.S_spin_box.setRange(1, 5)  # 设置范围为1到5
+        self.S_spin_box.setValue(3)       # 设置默认值
+        self.S_spin_box.setSingleStep(1)   # 设置每次增加或减少的步进值
+        spin_layout.addWidget(self.S_spin_box)
+
+        # 将横向布局添加到复选框布局
+        checkbox_layout.addLayout(spin_layout)
+
+        #添加描述标签
+        self.spin_label = QLabel("若输出视频无偏转问题，偏移值和区域大小设置请采用默认值。")
+        checkbox_layout.addWidget(self.spin_label)
+
+        # 添加描述标签
         self.type_label = QLabel("v2模式下，在视频文件名称前添加v1字样，将对该文件以v1模式进行处理。")
         checkbox_layout.addWidget(self.type_label)
 
@@ -171,7 +209,7 @@ class VideoProcessorApp(QWidget):
         checkbox_group = QGroupBox("设置选项")
         checkbox_group.setLayout(checkbox_layout)
         main_layout.addWidget(checkbox_group)
-
+       
         # 按钮行布局
         button_layout = QHBoxLayout()
         button_layout.setSpacing(10)  # 设置按钮之间的间距
@@ -312,11 +350,13 @@ class VideoProcessorApp(QWidget):
         circle = self.circle_checkbox.isChecked()
         hi_quality = self.hi_q_checkbox.isChecked()
         type_v = "v2" if self.type_checkbox.isChecked() else "v1"
+        O_value = self.O_spin_box.value()  # 获取当前值
+        S_value = self.S_spin_box.value()  # 获取当前值
         self.info_textbox.append("开始处理视频...")
 
         # 启动视频处理线程
         print(f"使用的 FFmpeg 路径: {self.ffmpeg_path}")
-        self.video_thread = VideoProcessingThread(self.input_folder, self.output_folder, self.ffmpeg_path, square, type_v, circle, hi_quality)
+        self.video_thread = VideoProcessingThread(self.input_folder, self.output_folder, self.ffmpeg_path, square, type_v, circle, hi_quality, O_value, S_value)
         self.video_thread.update_info.connect(self.info_textbox.append)
         self.video_thread.processing_done.connect(self.processing_complete)
         self.video_thread.start()
@@ -338,7 +378,11 @@ class VideoProcessorApp(QWidget):
                        "8. 圆形蒙版将方形渲染的视频通过圆形裁剪后输出，圆形蒙版只能在启用方形渲染的前提下启用。\n" \
                        "9. 高码率输出将获得更好地视频质量，但是文件大小和导出时间都将大幅增加。\n" \
                        "10. 取消勾选启用模式v2将强制以v1模式进行视频转化。启动v2模式的前提下，在视频文件前加v1，将对该视频文件以v1模式进行处理。\n" \
-                       "11. 处理完成后，可以点击'打开输出文件夹'按钮查看输出的视频。\n"\
+                       "11. 程序通过获取四角的颜色值进行每帧的旋转角度计算。\n"\
+                       "12. 采集颜色块偏移值指从画面边缘的偏移量，单位为像素，默认值为 3 像素，范围为0-5。\n"\
+                       "13. 采集颜色块大小指采集的样本区域大小，单位为像素，默认值为 3 像素，范围为1-5。\n"\
+                       "14. 一般情况下请采用默认的采集颜色块偏移值和采集颜色块大小，当输出帧存在旋转角度偏转问题时请尝试调整偏移量和采样区域。\n"\
+                       "15. 处理完成后，可以点击'打开输出文件夹'按钮查看输出的视频。\n"\
                        "版权声明：\n"\
                        "        This product includes software developed at \n"\
                        "Original Project python_rotaeno_stabilizer(https://github.com/Lawrenceeeeeeee/python_rotaeno_stabilizer/tree/master)\n"\
